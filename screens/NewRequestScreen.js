@@ -4,14 +4,14 @@
  * Native: expo-speech-recognition (Google STT, free, instant) — needs dev build.
  * Web:    Web Speech API (Chrome/Edge) — free, no key.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar,
   TextInput, ScrollView, KeyboardAvoidingView, Platform,
   ActivityIndicator, Alert,
 } from 'react-native';
-import speechService from '../services/speechService';
 import { extractMaterial } from '../services/materialExtractor';
+import useVoiceRecorder from '../hooks/useVoiceRecorder';
 
 function buildRequestFromExtracted(extracted, ts) {
   return {
@@ -33,76 +33,30 @@ function buildRequestFromExtracted(extracted, ts) {
 
 export default function NewRequestScreen({ navigation, route }) {
   const { project, clearedForReRecord } = route.params ?? {};
-  const [status, setStatus] = useState('idle'); // idle | listening | processing
-  const [liveTranscript, setLiveTranscript] = useState('');
-  const [finalTranscript, setFinalTranscript] = useState('');
   const [typeText, setTypeText] = useState('');
   const [showBanner, setShowBanner] = useState(!!clearedForReRecord);
-  const [seconds, setSeconds] = useState(0);
-  const timerRef = useRef(null);
+
+  const {
+    status, setStatus,
+    liveTranscript, finalTranscript,
+    seconds,
+    startListening, stopListening, cancelListening,
+    formatTime,
+  } = useVoiceRecorder({
+    onEnd: async (fullText) => {
+      const extracted = await extractMaterial(fullText);
+      navigation.navigate('ReviewSubmit', {
+        project,
+        request: buildRequestFromExtracted(extracted, Date.now()),
+      });
+    },
+  });
 
   useEffect(() => {
     if (!showBanner) return;
     const t = setTimeout(() => setShowBanner(false), 4000);
     return () => clearTimeout(t);
   }, [showBanner]);
-
-  useEffect(() => {
-    if (status === 'listening') {
-      setSeconds(0);
-      timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
-    } else {
-      clearInterval(timerRef.current);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [status]);
-
-  function startListening() {
-    setLiveTranscript('');
-    setFinalTranscript('');
-
-    speechService.start({
-      onInterim: (text) => setLiveTranscript(text),
-      onFinal: (text) => { setFinalTranscript(text); setLiveTranscript(text); },
-      onEnd: async (fullText) => {
-        if (!fullText.trim()) { setStatus('idle'); return; }
-        setStatus('processing'); // ensure processing screen shows (covers intent path)
-        setFinalTranscript(fullText);
-        const extracted = await extractMaterial(fullText);
-        navigation.navigate('ReviewSubmit', {
-          project,
-          request: buildRequestFromExtracted(extracted, Date.now()),
-        });
-        setStatus('idle');
-      },
-      onError: (msg) => {
-        setStatus('idle');
-        if (msg === 'NEEDS_DEV_BUILD') {
-          Alert.alert(
-            'One-time setup needed',
-            'To enable free voice recognition on your phone, run this command once on your PC:\n\nnpx expo run:android\n\nThis builds the app with Google\'s built-in speech engine.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert('Voice Error', msg, [{ text: 'OK' }]);
-        }
-      },
-    });
-
-    setStatus('listening');
-  }
-
-  function stopListening() {
-    setStatus('processing');
-    speechService.stop();
-  }
-
-  function cancelListening() {
-    speechService.abort();
-    setStatus('idle');
-    setLiveTranscript('');
-    setFinalTranscript('');
-  }
 
   async function handleTypeSubmit() {
     if (!typeText.trim()) return;
@@ -113,10 +67,6 @@ export default function NewRequestScreen({ navigation, route }) {
       request: buildRequestFromExtracted(extracted, Date.now()),
     });
     setStatus('idle');
-  }
-
-  function formatTime(secs) {
-    return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   }
 
   // ── LISTENING ──────────────────────────────────────────────────────────────
@@ -231,7 +181,7 @@ export default function NewRequestScreen({ navigation, route }) {
             {Platform.OS !== 'web' && (
               <View style={styles.nativeBadge}>
                 <Text style={styles.nativeBadgeText}>
-                  🎤 Using device microphone · Whisper AI transcription
+                  🎤 Using device microphone · Google Speech Recognition
                 </Text>
               </View>
             )}
@@ -264,7 +214,12 @@ export default function NewRequestScreen({ navigation, route }) {
       <View style={styles.footerBar}>
         <Text style={styles.footerText}>
           🌐 Recording in English ·{' '}
-          <Text style={styles.footerLink}>Change in profile</Text>
+          <Text
+            style={styles.footerLink}
+            onPress={() => Alert.alert('Language settings', 'Language selection coming in a future update.', [{ text: 'OK' }])}
+          >
+            Change in profile
+          </Text>
         </Text>
       </View>
 

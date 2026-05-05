@@ -33,7 +33,11 @@ function hasWebSpeech() {
 }
 
 function isExpoGo() {
-  return Constants.appOwnership === 'expo';
+  // executionEnvironment is the SDK 49+ API; appOwnership is the legacy fallback
+  return (
+    Constants.executionEnvironment === 'storeClient' ||
+    Constants.appOwnership === 'expo'
+  );
 }
 
 // ── service ────────────────────────────────────────────────────────────────────
@@ -162,6 +166,9 @@ class SpeechService {
 
   // ── Path B: Android speech intent (Expo Go, opens Google dialog) ──────────────
 
+  // Android Activity.RESULT_OK constant
+  static ANDROID_RESULT_OK = -1;
+
   async _startAndroidIntent() {
     if (!IntentLauncher || Platform.OS !== 'android') {
       this._handlers?.onError?.(
@@ -191,7 +198,7 @@ class SpeechService {
 
       if (!this._handlers) return; // aborted
 
-      if (result.resultCode === -1) {
+      if (result.resultCode === SpeechService.ANDROID_RESULT_OK) {
         // RESULT_OK — extract the recognised text
         const texts = result.extra?.['android.speech.extra.RESULTS'];
         const text  = Array.isArray(texts) ? texts[0] : (texts ?? '');
@@ -259,4 +266,5 @@ class SpeechService {
   }
 }
 
-export default new SpeechService();
+const speechService = new SpeechService();
+export default speechService;

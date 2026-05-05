@@ -53,7 +53,7 @@ export default function DraftsScreen({ navigation, route }) {
 
             {draft.items.map(item => (
               <Text key={item.id} style={styles.draftItem}>
-                {item.name} · {item.quantity}
+                {[item.name, item.quantity].filter(Boolean).join(' · ')}
               </Text>
             ))}
 

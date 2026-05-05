@@ -1,6 +1,9 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
 import { useApp } from '../context/AppContext';
 
+// TODO: replace with authenticated user from context once auth is implemented
+const CURRENT_USER = { name: 'Jose Rodriguez', initials: 'JR' };
+
 const PROJECTS = [
   { id: '1', name: 'Bridgeland', location: 'Cypress, TX', status: 'Active' },
   { id: '2', name: 'Astros Village', location: 'Midtown, Houston', status: 'Active' },
@@ -57,9 +60,9 @@ export default function SelectProjectScreen({ navigation }) {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>JR</Text>
+            <Text style={styles.avatarText}>{CURRENT_USER.initials}</Text>
           </View>
-          <Text style={styles.userName}>Jose Rodriguez</Text>
+          <Text style={styles.userName}>{CURRENT_USER.name}</Text>
         </View>
         <Text style={styles.headerTitle}>Select project</Text>
         <Text style={styles.headerSub}>

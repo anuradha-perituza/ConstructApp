@@ -3,88 +3,52 @@
  * Voice flow:  idle → listening → processing → extracted
  * Uses real Web Speech API (Chrome/Edge) + Claude AI / regex extraction.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar,
   TextInput, ScrollView, KeyboardAvoidingView, Platform,
-  ActivityIndicator, Alert,
+  ActivityIndicator,
 } from 'react-native';
-import speechService from '../services/speechService';
 import { extractMaterial } from '../services/materialExtractor';
+import useVoiceRecorder from '../hooks/useVoiceRecorder';
 
 // status: 'idle' | 'listening' | 'processing' | 'extracted'
 
 export default function AddItemScreen({ navigation, route }) {
   const { project, request } = route.params;
 
-  const [status, setStatus] = useState('idle');
-  const [liveTranscript, setLiveTranscript] = useState('');
-  const [finalTranscript, setFinalTranscript] = useState('');
   const [extracted, setExtracted] = useState(null);
   const [typeText, setTypeText] = useState('');
-  const [seconds, setSeconds] = useState(0);
-  const timerRef = useRef(null);
+  const [sourceText, setSourceText] = useState(''); // text shown in HEARD box
 
-  // Timer while listening
-  useEffect(() => {
-    if (status === 'listening') {
-      setSeconds(0);
-      timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
-    } else {
-      clearInterval(timerRef.current);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [status]);
+  const {
+    status, setStatus,
+    liveTranscript,
+    seconds,
+    startListening: _startListening,
+    stopListening, cancelListening,
+    formatTime,
+  } = useVoiceRecorder({
+    onEnd: async (fullText) => {
+      setSourceText(fullText);
+      const result = await extractMaterial(fullText);
+      setExtracted(result);
+      setStatus('extracted');
+    },
+  });
 
   function startListening() {
-    setLiveTranscript('');
-    setFinalTranscript('');
     setExtracted(null);
-
-    speechService.start({
-      onInterim: (text) => setLiveTranscript(text),
-      onFinal: (text) => { setFinalTranscript(text); setLiveTranscript(text); },
-      onEnd: async (fullText) => {
-        if (!fullText.trim()) { setStatus('idle'); return; }
-        setStatus('processing'); // ensure processing screen shows (covers intent path)
-        setFinalTranscript(fullText);
-        const result = await extractMaterial(fullText);
-        setExtracted(result);
-        setStatus('extracted');
-      },
-      onError: (msg) => {
-        setStatus('idle');
-        if (msg === 'NEEDS_DEV_BUILD') {
-          Alert.alert(
-            'One-time setup needed',
-            'To enable free voice recognition on your phone, run this command once on your PC:\n\nnpx expo run:android\n\nThis builds the app with Google\'s built-in speech engine.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert('Voice Error', msg, [{ text: 'OK' }]);
-        }
-      },
-    });
-
-    setStatus('listening');
-  }
-
-  function stopListening() {
-    setStatus('processing');
-    speechService.stop();
-  }
-
-  function cancelListening() {
-    speechService.abort();
-    setStatus('idle');
-    setLiveTranscript('');
-    setFinalTranscript('');
+    setSourceText('');
+    _startListening();
   }
 
   async function handleTypeProcess() {
     if (!typeText.trim()) return;
+    const text = typeText.trim();
+    setSourceText(text); // save before clearing so HEARD box can display it
     setStatus('processing');
-    const result = await extractMaterial(typeText.trim());
+    const result = await extractMaterial(text);
     setExtracted(result);
     setTypeText('');
     setStatus('extracted');
@@ -103,13 +67,8 @@ export default function AddItemScreen({ navigation, route }) {
 
   function handleRespeak() {
     setExtracted(null);
-    setLiveTranscript('');
-    setFinalTranscript('');
-    setStatus('idle');
-  }
-
-  function formatTime(secs) {
-    return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    setSourceText('');
+    cancelListening();
   }
 
   // ── LISTENING SCREEN ───────────────────────────────────────────────────────
@@ -225,7 +184,7 @@ export default function AddItemScreen({ navigation, route }) {
                 {Platform.OS !== 'web' && (
                   <View style={styles.nativeBadge}>
                     <Text style={styles.nativeBadgeText}>
-                      🎤 Using device microphone · Whisper AI transcription
+                      🎤 Using device microphone · Google Speech Recognition
                     </Text>
                   </View>
                 )}
@@ -270,7 +229,7 @@ export default function AddItemScreen({ navigation, route }) {
               <View style={styles.transcriptPill}>
                 <Text style={styles.transcriptPillLabel}>HEARD</Text>
                 <Text style={styles.transcriptPillText} numberOfLines={2}>
-                  "{finalTranscript || typeText}"
+                  "{sourceText}"
                 </Text>
               </View>
 
@@ -316,7 +275,7 @@ export default function AddItemScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F3F4F6' },
-  safeRec: { flex: 1, backgroundColor: '#7F1D1D' },
+  safeRec: { flex: 1, backgroundColor: '#DBEAFE' },
   safeProcessing: { flex: 1, backgroundColor: '#F3F4F6' },
   header: {
     backgroundColor: '#1B3A8C',
@@ -523,8 +482,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FCA5A5', marginRight: 6,
   },
   recLabel: { color: '#FCA5A5', fontSize: 13, fontWeight: '700' },
-  recTitleBar: { backgroundColor: '#7F1D1D', paddingHorizontal: 16, paddingBottom: 16 },
-  recTitle: { color: '#fff', fontSize: 24, fontWeight: '700' },
+  recTitleBar: { backgroundColor: '#DBEAFE', paddingHorizontal: 16, paddingBottom: 16 },
+  recTitle: { color: '#1E3A8A', fontSize: 24, fontWeight: '700' },
   recBody: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -532,29 +491,29 @@ const styles = StyleSheet.create({
     paddingTop: 30,
     gap: 22,
   },
-  timer: { fontSize: 46, fontWeight: '700', color: '#EF4444', letterSpacing: 2 },
+  timer: { fontSize: 46, fontWeight: '700', color: '#1D4ED8', letterSpacing: 2 },
   waveform: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  waveBar: { width: 5, backgroundColor: '#EF4444', borderRadius: 3 },
+  waveBar: { width: 5, backgroundColor: '#3B82F6', borderRadius: 3 },
   transcriptBox: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.70)',
     borderRadius: 10,
     padding: 14,
     width: '100%',
     minHeight: 80,
   },
   transcriptLabel: {
-    color: '#FCA5A5',
+    color: '#1D4ED8',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
     marginBottom: 6,
   },
-  transcriptText: { color: '#fff', fontSize: 14, lineHeight: 22 },
+  transcriptText: { color: '#1E3A8A', fontSize: 14, lineHeight: 22 },
   stopBtn: {
     width: 68, height: 68, borderRadius: 34,
     backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center',
   },
   stopIcon: { width: 22, height: 22, backgroundColor: '#fff', borderRadius: 4 },
-  tapToStop: { color: '#FCA5A5', fontSize: 13 },
-  cancelText: { color: '#FCA5A5', fontSize: 14, textDecorationLine: 'underline' },
+  tapToStop: { color: '#1D4ED8', fontSize: 13 },
+  cancelText: { color: '#1D4ED8', fontSize: 14, textDecorationLine: 'underline' },
 });

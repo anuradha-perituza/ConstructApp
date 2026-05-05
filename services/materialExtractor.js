@@ -29,7 +29,7 @@ const UNIT_MAP = {
 
 const UNIT_PATTERN =
   '(bags?|sacks?|sheets?|rolls?|pieces?|pcs?|boards?|lengths?|sticks?' +
-  '|boxes?|units?|tons?|gallons?|gal|tubes?|buckets?|bundles?|pallets?|cans?|packs?)';
+  '|boxes?|units?|tons?|gallons?|gal|tubes?|buckets?|bundles?|pallets?|cans?|packets?|packs?)';
 
 function normaliseUnit(raw) {
   const key = raw.toLowerCase().replace(/[^a-z]/g, '');
@@ -113,9 +113,13 @@ function regexExtract(transcript) {
 
 // ─── Claude AI extractor ──────────────────────────────────────────────────────
 
+const CLAUDE_MODEL   = 'claude-haiku-4-5-20251001'; // update here if model changes
+const CLAUDE_TIMEOUT = 8000; // ms — fall back to regex if API is slow
+
 async function claudeExtract(transcript) {
   const apiKey = Constants.expoConfig?.extra?.anthropicApiKey;
-  if (!apiKey || apiKey === 'YOUR_ANTHROPIC_API_KEY_HERE') return null;
+  // Treat missing, empty, or placeholder keys as unconfigured
+  if (!apiKey || apiKey.startsWith('YOUR_') || apiKey.length < 20) return null;
 
   const prompt = `You are a construction site assistant. Extract the material details from this voice request.
 Return ONLY a raw JSON object — no markdown, no explanation.
@@ -130,9 +134,13 @@ Examples:
 "rebar number 4 20 sticks 20 feet" → {"name":"Rebar #4","quantity":"20 sticks","spec":"20 ft each"}
 "two dozen concrete blocks" → {"name":"Concrete Block","quantity":"24 units","spec":""}`;
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CLAUDE_TIMEOUT);
+
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
@@ -140,7 +148,7 @@ Examples:
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: CLAUDE_MODEL,
         max_tokens: 150,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -152,7 +160,9 @@ Examples:
     const parsed = JSON.parse(text);
     if (parsed?.name) return parsed;
   } catch {
-    // fall through to regex
+    // AbortError (timeout) or network/parse error — fall through to regex
+  } finally {
+    clearTimeout(timeout);
   }
   return null;
 }

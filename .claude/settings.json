@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(eas --version)",
+      "Bash(node -e \"const j = require\\('jest-expo/package.json'\\); console.log\\(JSON.stringify\\(j.peerDependencies || j.dependencies, null, 2\\)\\)\")",
+      "Bash(node -e \"const j = require\\('jest-expo/package.json'\\); console.log\\(JSON.stringify\\(j.dependencies, null, 2\\)\\)\")",
+      "mcp__github__create_issue",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

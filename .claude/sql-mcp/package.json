@@ -1,0 +1,9 @@
+{
+  "name": "localdb-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for (localdb)\\MSSQLLocalDB using Windows Authentication via sqlcmd",
+  "main": "index.js",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

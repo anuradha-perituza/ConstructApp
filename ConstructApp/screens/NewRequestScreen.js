@@ -4,14 +4,14 @@
  * Native: expo-speech-recognition (Google STT, free, instant) — needs dev build.
  * Web:    Web Speech API (Chrome/Edge) — free, no key.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar,
   TextInput, ScrollView, KeyboardAvoidingView, Platform,
   ActivityIndicator, Alert,
 } from 'react-native';
-import speechService from '../services/speechService';
 import { extractMaterial } from '../services/materialExtractor';
+import useVoiceRecorder from '../hooks/useVoiceRecorder';
 
 function buildRequestFromExtracted(extracted, ts) {
   return {
@@ -33,76 +33,30 @@ function buildRequestFromExtracted(extracted, ts) {
 
 export default function NewRequestScreen({ navigation, route }) {
   const { project, clearedForReRecord } = route.params ?? {};
-  const [status, setStatus] = useState('idle'); // idle | listening | processing
-  const [liveTranscript, setLiveTranscript] = useState('');
-  const [finalTranscript, setFinalTranscript] = useState('');
   const [typeText, setTypeText] = useState('');
   const [showBanner, setShowBanner] = useState(!!clearedForReRecord);
-  const [seconds, setSeconds] = useState(0);
-  const timerRef = useRef(null);
+
+  const {
+    status, setStatus,
+    liveTranscript, finalTranscript,
+    seconds,
+    startListening, stopListening, cancelListening,
+    formatTime,
+  } = useVoiceRecorder({
+    onEnd: async (fullText) => {
+      const extracted = await extractMaterial(fullText);
+      navigation.navigate('ReviewSubmit', {
+        project,
+        request: buildRequestFromExtracted(extracted, Date.now()),
+      });
+    },
+  });
 
   useEffect(() => {
     if (!showBanner) return;
     const t = setTimeout(() => setShowBanner(false), 4000);
     return () => clearTimeout(t);
   }, [showBanner]);
-
-  useEffect(() => {
-    if (status === 'listening') {
-      setSeconds(0);
-      timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
-    } else {
-      clearInterval(timerRef.current);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [status]);
-
-  function startListening() {
-    setLiveTranscript('');
-    setFinalTranscript('');
-
-    speechService.start({
-      onInterim: (text) => setLiveTranscript(text),
-      onFinal: (text) => { setFinalTranscript(text); setLiveTranscript(text); },
-      onEnd: async (fullText) => {
-        if (!fullText.trim()) { setStatus('idle'); return; }
-        setStatus('processing'); // ensure processing screen shows (covers intent path)
-        setFinalTranscript(fullText);
-        const extracted = await extractMaterial(fullText);
-        navigation.navigate('ReviewSubmit', {
-          project,
-          request: buildRequestFromExtracted(extracted, Date.now()),
-        });
-        setStatus('idle');
-      },
-      onError: (msg) => {
-        setStatus('idle');
-        if (msg === 'NEEDS_DEV_BUILD') {
-          Alert.alert(
-            'One-time setup needed',
-            'To enable free voice recognition on your phone, run this command once on your PC:\n\nnpx expo run:android\n\nThis builds the app with Google\'s built-in speech engine.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert('Voice Error', msg, [{ text: 'OK' }]);
-        }
-      },
-    });
-
-    setStatus('listening');
-  }
-
-  function stopListening() {
-    setStatus('processing');
-    speechService.stop();
-  }
-
-  function cancelListening() {
-    speechService.abort();
-    setStatus('idle');
-    setLiveTranscript('');
-    setFinalTranscript('');
-  }
 
   async function handleTypeSubmit() {
     if (!typeText.trim()) return;
@@ -113,10 +67,6 @@ export default function NewRequestScreen({ navigation, route }) {
       request: buildRequestFromExtracted(extracted, Date.now()),
     });
     setStatus('idle');
-  }
-
-  function formatTime(secs) {
-    return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   }
 
   // ── LISTENING ──────────────────────────────────────────────────────────────
@@ -231,7 +181,7 @@ export default function NewRequestScreen({ navigation, route }) {
             {Platform.OS !== 'web' && (
               <View style={styles.nativeBadge}>
                 <Text style={styles.nativeBadgeText}>
-                  🎤 Using device microphone · Whisper AI transcription
+                  🎤 Using device microphone · Google Speech Recognition
                 </Text>
               </View>
             )}
@@ -264,7 +214,12 @@ export default function NewRequestScreen({ navigation, route }) {
       <View style={styles.footerBar}>
         <Text style={styles.footerText}>
           🌐 Recording in English ·{' '}
-          <Text style={styles.footerLink}>Change in profile</Text>
+          <Text
+            style={styles.footerLink}
+            onPress={() => Alert.alert('Language settings', 'Language selection coming in a future update.', [{ text: 'OK' }])}
+          >
+            Change in profile
+          </Text>
         </Text>
       </View>
 
@@ -274,7 +229,7 @@ export default function NewRequestScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F3F4F6' },
-  safeRec: { flex: 1, backgroundColor: '#7F1D1D' },
+  safeRec: { flex: 1, backgroundColor: '#DBEAFE' },
   safeProcessing: { flex: 1, backgroundColor: '#F3F4F6' },
   header: {
     backgroundColor: '#1B3A8C',
@@ -403,37 +358,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#FCA5A5', marginRight: 6,
   },
   recLabel: { color: '#FCA5A5', fontSize: 13, fontWeight: '700' },
-  recTitleBar: { backgroundColor: '#7F1D1D', paddingHorizontal: 16, paddingBottom: 16 },
-  recTitle: { color: '#fff', fontSize: 24, fontWeight: '700' },
+  recTitleBar: { backgroundColor: '#DBEAFE', paddingHorizontal: 16, paddingBottom: 16 },
+  recTitle: { color: '#1E3A8A', fontSize: 24, fontWeight: '700' },
   recBody: {
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingTop: 30,
     gap: 22,
   },
-  timer: { fontSize: 46, fontWeight: '700', color: '#EF4444', letterSpacing: 2 },
+  timer: { fontSize: 46, fontWeight: '700', color: '#1D4ED8', letterSpacing: 2 },
   waveform: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  waveBar: { width: 5, backgroundColor: '#EF4444', borderRadius: 3 },
+  waveBar: { width: 5, backgroundColor: '#3B82F6', borderRadius: 3 },
   transcriptBox: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.70)',
     borderRadius: 10,
     padding: 14,
     width: '100%',
     minHeight: 90,
   },
   transcriptLabel: {
-    color: '#FCA5A5',
+    color: '#1D4ED8',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
     marginBottom: 6,
   },
-  transcriptText: { color: '#fff', fontSize: 14, lineHeight: 22 },
+  transcriptText: { color: '#1E3A8A', fontSize: 14, lineHeight: 22 },
   stopBtn: {
     width: 68, height: 68, borderRadius: 34,
     backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center',
   },
   stopIcon: { width: 22, height: 22, backgroundColor: '#fff', borderRadius: 4 },
-  tapToStop: { color: '#FCA5A5', fontSize: 13 },
-  cancelText: { color: '#FCA5A5', fontSize: 14, textDecorationLine: 'underline' },
+  tapToStop: { color: '#1D4ED8', fontSize: 13 },
+  cancelText: { color: '#1D4ED8', fontSize: 14, textDecorationLine: 'underline' },
 });

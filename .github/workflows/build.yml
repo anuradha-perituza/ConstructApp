@@ -71,18 +71,19 @@ jobs:
       - name: Verify APK is signed (Android Enterprise requirement)
         run: |
           APK=android/app/build/outputs/apk/release/app-release.apk
-          # Confirm the signed APK exists (unsigned would be app-release-unsigned.apk)
           if [ ! -f "$APK" ]; then
             echo "ERROR: Signed APK not found. Check keystore secrets."
             exit 1
           fi
-          # Print signing certificate info for audit trail
           $JAVA_HOME/bin/keytool -printcert -jarfile "$APK" | grep -E "Owner|Issuer|SHA|Valid"
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/Const.perituza.apk
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: ConstructApp-release-${{ github.run_number }}
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: Const.perituza
+          path: android/app/build/outputs/apk/release/Const.perituza.apk
           if-no-files-found: error
           retention-days: 30

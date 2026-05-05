@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView,
-  StatusBar, TextInput, Modal,
+  StatusBar, TextInput, Modal, Alert,
 } from 'react-native';
 import { useApp } from '../context/AppContext';
 
@@ -13,8 +13,13 @@ export default function ReviewSubmitScreen({ navigation, route }) {
   const [aiReply, setAiReply] = useState('');
   const [showReRecordModal, setShowReRecordModal] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [editingId, setEditingId] = useState(null);   // id of item being edited
-  const [editDraft, setEditDraft] = useState({});      // { name, quantity, spec }
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
+  const successTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => clearTimeout(successTimerRef.current);
+  }, []);
 
   // Receive new item added from AddItemScreen
   useEffect(() => {
@@ -71,18 +76,24 @@ export default function ReviewSubmitScreen({ navigation, route }) {
   }
 
   function handleSubmit() {
+    if (request.items.length === 0) {
+      Alert.alert('No items', 'Add at least one material item before submitting.', [{ text: 'OK' }]);
+      return;
+    }
     setSubmitted(true);
-    setTimeout(() => navigation.navigate('SelectProject'), 2200);
+    successTimerRef.current = setTimeout(() => navigation.navigate('SelectProject'), 2200);
   }
 
   function handleAiReply() {
-    if (!aiReply.trim()) return;
-    const lower = aiReply.toLowerCase();
-    if (lower.includes('urgent') || lower.includes('high')) {
+    const trimmed = aiReply.trim();
+    if (trimmed.length < 3) return; // ignore accidental taps or single-char input
+    const lower = trimmed.toLowerCase();
+    if (lower.includes('urgent') || lower.includes('high') || lower.includes('asap')) {
       updateField('urgency', 'Urgent');
-    } else {
+    } else if (lower.includes('normal') || lower.includes('standard') || lower.includes('low')) {
       updateField('urgency', 'Normal');
     }
+    // If no recognised keyword, leave urgency unchanged rather than defaulting to Normal
     setAiReply('');
   }
 
@@ -120,7 +131,10 @@ export default function ReviewSubmitScreen({ navigation, route }) {
           <Text style={styles.sectionLabel}>PROJECT</Text>
           <View style={styles.projectField}>
             <Text style={styles.projectFieldValue}>{project.name}</Text>
-            <TouchableOpacity style={styles.changeBtn}>
+            <TouchableOpacity
+              style={styles.changeBtn}
+              onPress={() => Alert.alert('Change Project', 'Project switching coming in a future update.', [{ text: 'OK' }])}
+            >
               <Text style={styles.changeBtnText}>Change</Text>
             </TouchableOpacity>
           </View>
@@ -279,8 +293,8 @@ export default function ReviewSubmitScreen({ navigation, route }) {
           </View>
         </View>
 
-        {/* AI ASSISTANT */}
-        <View style={styles.aiPanel}>
+        {/* AI ASSISTANT — only shown when urgency has not been set */}
+        {!request.urgency && <View style={styles.aiPanel}>
           <View style={styles.rowBetween}>
             <Text style={styles.aiLabel}>AI assistant</Text>
             <View style={styles.aiToggleWrap}>
@@ -316,16 +330,16 @@ export default function ReviewSubmitScreen({ navigation, route }) {
               />
             ) : (
               <TouchableOpacity style={{ flex: 1 }} onPress={() => setAiMode('type')}>
-                <Text style={styles.aiPlaceholder}>Tap to reply by voice...</Text>
+                <Text style={styles.aiPlaceholder}>Tap to type your reply...</Text>
               </TouchableOpacity>
             )}
           </View>
-          {aiMode === 'type' && aiReply.trim().length > 0 && (
+          {aiMode === 'type' && aiReply.trim().length >= 3 && (
             <TouchableOpacity style={styles.aiSendBtn} onPress={handleAiReply}>
               <Text style={styles.aiSendText}>Set urgency →</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </View>}
 
         {/* ACTIONS */}
         <View style={styles.actions}>
